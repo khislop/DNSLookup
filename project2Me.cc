@@ -49,9 +49,9 @@ struct QUESTION
 //Pointers to resource record contents
 struct RES_RECORD
 {
-    unsigned char *name;
+    char *name;
     struct R_DATA *resource;
-    unsigned char *rdata;
+    char *rdata;
 };
 
 //Constant sized fields of the resource record structure
@@ -66,7 +66,7 @@ struct R_DATA
 #pragma pack(pop)
  
 // This function was borowed from http://www.binarytides.com/dns-query-code-in-c-with-winsock/
-void ChangetoDnsNameFormat(unsigned char* dns,unsigned char* host) 
+void ChangetoDnsNameFormat(char* header,char* host) 
 {
     int lock = 0 , i;
     strcat((char*)host,".");
@@ -75,43 +75,46 @@ void ChangetoDnsNameFormat(unsigned char* dns,unsigned char* host)
     {
         if(host[i]=='.') 
         {
-            *dns++ = i-lock;
+            *header++ = i-lock;
             for(;lock<i;lock++) 
             {
-                *dns++=host[lock];
+                *header++=host[lock];
             }
             lock++; //or lock=i+1;
         }
     }
-    *dns++='\0';
+    *header++='\0';
 }
 
-u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
+char* ReadName(char* cursor,char* buffer,int* count)
 {
-    unsigned char *name;
-    unsigned int p=0,jumped=0,offset;
+    char *name;
+    int p=0,jumped=0,offset;
     int i , j;
  
     *count = 1;
-    name = (unsigned char*)malloc(256);
+    name = (char*)malloc(256);
  
     name[0]='\0';
+    
+    
+    //printf("cursor Num : %s ", cursor);
  
     //read the names in 3www6google3com format
-    while(*reader!=0)
+    while(*cursor!=0)
     {
-        if(*reader>=192)
+        if(*cursor>=192)
         {
-            offset = (*reader)*256 + *(reader+1) - 49152; //49152 = 11000000 00000000 ;)
-            reader = buffer + offset - 1;
+            offset = (*cursor)*256 + *(cursor+1) - 49152; //49152 = 11000000 00000000 ;)
+            cursor = buffer + offset - 1;
             jumped = 1; //we have jumped to another location so counting wont go up!
         }
         else
         {
-            name[p++]=*reader;
+            name[p++]=*cursor;
         }
  
-        reader = reader+1;
+        cursor = cursor+1;
  
         if(jumped==0)
         {
@@ -171,31 +174,32 @@ void queryServer(){
 
 }
 
-void queryServerQuestion(unsigned char *host)
-{
-    unsigned char buf[65536],*qname,*reader;
-    int i , j , stop , s, n;
+void queryServerQuestion(char* name){
+    int test;
+    int i , j, stop;
+    struct RES_RECORD answers[20];
+        struct sockaddr_in a;
+
+    int sockfd;	// Socketfd
+    int n;	
+    socklen_t len;
     int bufsize = 65536;
- 
-    struct sockaddr_in a;
- 
-    struct RES_RECORD answers[20],auth[20],addit[20]; //the replies from the DNS server
-    struct sockaddr_in dest;
- 
-    struct DNS_HEADER *header = NULL;
+    char recvbuf[bufsize], *qpos, buf[bufsize], *cursor; // Buffers for sending and receiving
+    struct sockaddr_in servaddr;  //Server address
     struct QUESTION *question = NULL;
- 
-    printf("Resolving %s" , host);
- 
-      s=socket(AF_INET,SOCK_DGRAM,0);  //Initialize the socketfd
-    bzero(&dest,sizeof(dest));  //Zero the server address
-    dest.sin_family=AF_INET;  //Specify and internet address
-    //dest.sin_addr.s_addr=inet_addr("127.0.0.1");  //localhost
-    //dest.sin_port=htons(5035);  //Set the port
-    dest.sin_addr.s_addr=inet_addr("138.67.1.2");  //Mines
-    //dest.sin_addr.s_addr=inet_addr("198.41.0.4");  //root a
-    dest.sin_port=htons(53);  //Set the port
-    //connect(s,(struct sockaddr*)&dest,sizeof(dest));  //Connect to the server
+    struct DNS_HEADER *header = NULL;
+    
+    
+    
+    sockfd=socket(AF_INET,SOCK_DGRAM,0);  //Initialize the socketfd
+    bzero(&servaddr,sizeof(servaddr));  //Zero the server address
+    servaddr.sin_family=AF_INET;  //Specify and internet address
+    //servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");  //localhost
+    //servaddr.sin_port=htons(5035);  //Set the port
+    servaddr.sin_addr.s_addr=inet_addr("138.67.1.2");  //Mines
+    //servaddr.sin_addr.s_addr=inet_addr("198.41.0.4");  //root a
+    servaddr.sin_port=htons(53);  //Set the port
+    //connect(sockfd,(struct sockaddr*)&servaddr,sizeof(servaddr));  //Connect to the server
     
     
     //Set the DNS structure to standard queries
@@ -220,36 +224,36 @@ void queryServerQuestion(unsigned char *host)
     
     
     //point past the header
-    qname = &buf[12];
+    qpos = &buf[12];
  
-    ChangetoDnsNameFormat(qname , host);
-    question = (struct QUESTION*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)]; //fill it
+    ChangetoDnsNameFormat(qpos , name);
+    question = (struct QUESTION*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qpos) + 1)]; //fill it
     
     question->qtype = htons(1); 
     question->qclass = htons(1); 
     
     printf("\nSending Packet...");
-    if( sendto(s,(char*)buf,sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION),0,(struct sockaddr*)&dest,sizeof(dest)) < 0)
+    if( sendto(sockfd,(char*)buf,sizeof(struct DNS_HEADER) + (strlen((const char*)qpos)+1) + sizeof(struct QUESTION),0,(struct sockaddr*)&servaddr,sizeof(servaddr)) < 0)
     {
         perror("sendto failed\n");
     }
     printf("Done\n");
     
 
-    n=recvfrom(s,buf,bufsize,0,NULL,NULL);  //receive a response
-    buf[n] = 0;  //set the end of the received data
+    n=recvfrom(sockfd,recvbuf,bufsize,0,NULL,NULL);  //receive a response
+    recvbuf[n] = 0;  //set the end of the received data
     printf("Return Result: %i\n", n);
     if(n < 1){
         printf("No response from this server.");
         return;
     }
-    printf("\n Server's Echo : %s\n\n",buf);  //print received data
+    printf("\n Server's Echo : %s\n\n",recvbuf);  //print received data
     
     
     ///////////////////////////////////////////////////////////////////////////
-    header = (struct DNS_HEADER*) buf;
+    header = (struct DNS_HEADER*) recvbuf;
     
-    reader = &buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION)];
+    cursor = &recvbuf[sizeof(struct DNS_HEADER) + (strlen((const char*)qpos)+1) + sizeof(struct QUESTION)];
     
     if(ntohs(header->ans_count) < 1){
         printf("No available answer from this server.\n\n");
@@ -262,137 +266,52 @@ void queryServerQuestion(unsigned char *host)
     printf("\n %d Answers.",ntohs(header->ans_count));
     printf("\n %d Authoritative Servers.",ntohs(header->auth_count));
     printf("\n %d Additional records.\n\n",ntohs(header->add_count));
- 
-    //Start reading answers
-    stop=0;
- 
+    
+    /////////////////////////////////////////////////////////////////////////////
+    
+    
+    //reading answers
     for(i=0;i<ntohs(header->ans_count);i++)
     {
-        answers[i].name=ReadName(reader,buf,&stop);
-        reader = reader + stop;
- 
-        answers[i].resource = (struct R_DATA*)(reader);
-        reader = reader + sizeof(struct R_DATA);
- 
-        if(ntohs(answers[i].resource->type) == 1) //if its an ipv4 address
+        answers[i].name=ReadName(cursor,recvbuf,&stop);
+        cursor+=stop;
+        answers[i].resource=(R_DATA*)(cursor);
+        cursor+=sizeof(R_DATA);
+        if(ntohs(answers[i].resource->type)==1)
         {
-            answers[i].rdata = (unsigned char*)malloc(ntohs(answers[i].resource->data_len));
- 
-            for(j=0 ; j<ntohs(answers[i].resource->data_len) ; j++)
-            {
-                answers[i].rdata[j]=reader[j];
-            }
- 
-            answers[i].rdata[ntohs(answers[i].resource->data_len)] = '\0';
- 
-            reader = reader + ntohs(answers[i].resource->data_len);
+            answers[i].rdata=new char[ntohs(answers[i].resource->data_len)];
+            for(int j=0;j<ntohs(answers[i].resource->data_len);j++)
+                answers[i].rdata[j]=cursor[j];
+            answers[i].rdata[ntohs(answers[i].resource->data_len)]='\0';
+            cursor+=ntohs(answers[i].resource->data_len);
         }
         else
         {
-            answers[i].rdata = ReadName(reader,buf,&stop);
-            reader = reader + stop;
+            answers[i].rdata=ReadName(cursor,recvbuf,&stop);
+            cursor+=stop;
         }
     }
- 
-    //read authorities
-    for(i=0;i<ntohs(header->auth_count);i++)
-    {
-        auth[i].name=ReadName(reader,buf,&stop);
-        reader+=stop;
- 
-        auth[i].resource=(struct R_DATA*)(reader);
-        reader+=sizeof(struct R_DATA);
- 
-        auth[i].rdata=ReadName(reader,buf,&stop);
-        reader+=stop;
-    }
- 
-    //read additional
-    for(i=0;i<ntohs(header->add_count);i++)
-    {typedef struct
-{
-    unsigned char *name;
-    struct QUESTION *ques;
-} QUERY;
-        addit[i].name=ReadName(reader,buf,&stop);
-        reader+=stop;
- 
-        addit[i].resource=(struct R_DATA*)(reader);
-        reader+=sizeof(struct R_DATA);
- 
-        if(ntohs(addit[i].resource->type)==1)
-        {
-            addit[i].rdata = (unsigned char*)malloc(ntohs(addit[i].resource->data_len));
-            for(j=0;j<ntohs(addit[i].resource->data_len);j++)
-            addit[i].rdata[j]=reader[j];
- 
-            addit[i].rdata[ntohs(addit[i].resource->data_len)]='\0';
-            reader+=ntohs(addit[i].resource->data_len);
-        }
-        else
-        {
-            addit[i].rdata=ReadName(reader,buf,&stop);
-            reader+=stop;
-        }
-    }
- 
-    //print answers
-    printf("\nAnswer Records : %d \n" , ntohs(header->ans_count) );
-    for(i=0 ; i < ntohs(header->ans_count) ; i++)
-    {
-        printf("Name : %s ",answers[i].name);
- 
-        if( ntohs(answers[i].resource->type) == 1) //IPv4 address
-        {
-            long *p;
-            p=(long*)answers[i].rdata;
-            a.sin_addr.s_addr=(*p); //working without ntohl
-            printf("has IPv4 address : %s",inet_ntoa(a.sin_addr));
-        }
-         
-        if(ntohs(answers[i].resource->type)==5) 
-        {
-            //Canonical name for an alias
-            printf("has alias name : %s",answers[i].rdata);
-        }
- 
-        printf("\n");
-    }
-
- 
-
+    printf("Name One : %s\n", answers[0].name);
+    
+    
     return;
 }
 
 // ***************************************************************************
 // * Main
 // ***************************************************************************
-/*int main(int argc, char **argv) {
+int main(int argc, char **argv) {
 
-    unsigned char address[50];
+    char *address;
     //address = (char*)malloc(sizeof("test"));
-    //address = (unsigned char)malloc(50);
+    address = (char*)malloc(50);
     strcpy(address, "www.mines.edu");
 
     queryServerQuestion(address);
 
     return 0;
     
-}*/
-
-int main( int argc , char *argv[])
-{
-    unsigned char hostname[100];
- 
-     
-    //Get the hostname from the terminal
-    printf("Enter Hostname to Lookup : ");
-    scanf("%s" , hostname);
-     
-    //Now get the ip of this hostname , A record
-    queryServerQuestion(hostname);
- 
-    return 0;
 }
+
 
 

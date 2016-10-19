@@ -358,9 +358,34 @@ void queryServerQuestion(unsigned char *host)
  
         printf("\n");
     }
-
  
-
+    //print authorities
+    printf("\nAuthoritive Records : %d \n" , ntohs(header->auth_count) );
+    for( i=0 ; i < ntohs(header->auth_count) ; i++)
+    {
+         
+        printf("Name : %s ",auth[i].name);
+        if(ntohs(auth[i].resource->type)==2)
+        {
+            printf("has nameserver : %s",auth[i].rdata);
+        }
+        printf("\n");
+    }
+ 
+    //print additional resource records
+    printf("\nAdditional Records : %d \n" , ntohs(header->add_count) );
+    for(i=0; i < ntohs(header->add_count) ; i++)
+    {
+        printf("Name : %s ",addit[i].name);
+        if(ntohs(addit[i].resource->type)==1)
+        {
+            long *p;
+            p=(long*)addit[i].rdata;
+            a.sin_addr.s_addr=(*p);
+            printf("has IPv4 address : %s",inet_ntoa(a.sin_addr));
+        }
+        printf("\n");
+    }
     return;
 }
 
