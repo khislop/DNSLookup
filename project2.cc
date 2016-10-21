@@ -169,7 +169,7 @@ void queryServer(){
 
 }
 
-void queryServerQuestion(unsigned char *host, char *nameserver)
+u_char* queryServerQuestion(unsigned char *host, char *nameserver)
 {
     int bufsize = 65536;
     unsigned char buf[bufsize],*qname,*reader,authbuf[bufsize];
@@ -234,7 +234,7 @@ void queryServerQuestion(unsigned char *host, char *nameserver)
     if( sendto(s,(char*)buf,sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION),0,(struct sockaddr*)&dest,sizeof(dest)) < 0)
     {
         perror("Sending failed");
-        return;
+        return host;
     }
     
 
@@ -243,7 +243,7 @@ void queryServerQuestion(unsigned char *host, char *nameserver)
     //printf("Return Result: %i\n", n);
     if(n < 1){
         printf("No response from this server.");
-        return;
+        return host;
     }
     //printf("\n Server's Echo : %s\n\n",buf);  //print received data
     
@@ -299,6 +299,26 @@ void queryServerQuestion(unsigned char *host, char *nameserver)
         reader+=stop;
     }
  
+    //read additional
+    for(i=0;i<ntohs(header->add_count);i++)
+    {
+        addit[i].name=ReadName(reader,buf,&stop);
+        reader+=stop;
+ 
+        addit[i].resource=(struct R_DATA*)(reader);
+        reader+=sizeof(struct R_DATA);
+ 
+        if(ntohs(addit[i].resource->type)==1)
+        {
+            addit[i].rdata = (unsigned char*)malloc(ntohs(addit[i].resource->data_len));
+            for(j=0;j<ntohs(addit[i].resource->data_len);j++)
+            addit[i].rdata[j]=reader[j];
+ 
+            addit[i].rdata[ntohs(addit[i].resource->data_len)]='\0';
+            reader+=ntohs(addit[i].resource->data_len);
+ 
+        }
+    }
  
     
     if(ntohs(header->ans_count) > 0){
@@ -321,24 +341,24 @@ void queryServerQuestion(unsigned char *host, char *nameserver)
                 printf("%s\n\n", inet_ntoa(a.sin_addr));
             }
         }
-        return;
+        return host;
         
-    }else if(ntohs(header->auth_count) > 0 && !noans){
+    }else if(ntohs(header->add_count) > 0 && !noans){
         printf("Need recursion.\n\n");
-        printf("Auth: %s\n\n", auth[0].rdata);
+        printf("Other is: %s\n\n", addit[0].rdata);
         //queryServerQuestion(unsigned char *host, char *nameserver)
         
         
     }else{
         printf("No available answer from this server.\n\n");
-        return;
+        return host;
     }
 
 
 //root - 198.41.0.4
 //mines - 138.67.1.2
 
-    return;
+    return host;
 }
 
 // ***************************************************************************
