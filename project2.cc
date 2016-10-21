@@ -185,9 +185,7 @@ void queryServerQuestion(unsigned char *host)
     struct DNS_HEADER *header = NULL;
     struct QUESTION *question = NULL;
  
-    printf("Resolving %s" , host);
- 
-      s=socket(AF_INET,SOCK_DGRAM,0);  //Initialize the socketfd
+    s=socket(AF_INET,SOCK_DGRAM,0);  //Initialize the socketfd
     bzero(&dest,sizeof(dest));  //Zero the server address
     dest.sin_family=AF_INET;  //Specify and internet address
     //dest.sin_addr.s_addr=inet_addr("127.0.0.1");  //localhost
@@ -206,13 +204,13 @@ void queryServerQuestion(unsigned char *host)
     header->opcode = 0; //This is a standard query
     header->aa = 0; //Not Authoritative
     header->tc = 0; //This message is not truncated
-    header->rd = 1; //Recursion Desired
+    header->rd = 0; //Recursion Not Desired
     header->ra = 0; //Recursion not available
     header->z = 0;
     header->ad = 0;
     header->cd = 0;
     header->rcode = 0;
-    header->q_count = htons(1); //we have only 1 question
+    header->q_count = htons(1);
     header->ans_count = 0;
     header->auth_count = 0;
     header->add_count = 0;
@@ -228,22 +226,20 @@ void queryServerQuestion(unsigned char *host)
     question->qtype = htons(1); 
     question->qclass = htons(1); 
     
-    printf("\nSending Packet...");
     if( sendto(s,(char*)buf,sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION),0,(struct sockaddr*)&dest,sizeof(dest)) < 0)
     {
         perror("sendto failed\n");
     }
-    printf("Done\n");
     
 
     n=recvfrom(s,buf,bufsize,0,NULL,NULL);  //receive a response
     buf[n] = 0;  //set the end of the received data
-    printf("Return Result: %i\n", n);
+    //printf("Return Result: %i\n", n);
     if(n < 1){
         printf("No response from this server.");
         return;
     }
-    printf("\n Server's Echo : %s\n\n",buf);  //print received data
+    //printf("\n Server's Echo : %s\n\n",buf);  //print received data
     
     
     ///////////////////////////////////////////////////////////////////////////
@@ -255,13 +251,6 @@ void queryServerQuestion(unsigned char *host)
         printf("No available answer from this server.\n\n");
         return;
     }
-    
- 
-    printf("\nThe response contains : ");
-    printf("\n %d Questions.",ntohs(header->q_count));
-    printf("\n %d Answers.",ntohs(header->ans_count));
-    printf("\n %d Authoritative Servers.",ntohs(header->auth_count));
-    printf("\n %d Additional records.\n\n",ntohs(header->add_count));
  
     //Start reading answers
     stop=0;
@@ -337,26 +326,17 @@ void queryServerQuestion(unsigned char *host)
     }
  
     //print answers
-    printf("\nAnswer Records : %d \n" , ntohs(header->ans_count) );
     for(i=0 ; i < ntohs(header->ans_count) ; i++)
     {
-        printf("Name : %s ",answers[i].name);
+        //printf("Name : %s ",answers[i].name);
  
         if( ntohs(answers[i].resource->type) == 1) //IPv4 address
         {
             long *p;
             p=(long*)answers[i].rdata;
             a.sin_addr.s_addr=(*p); //working without ntohl
-            printf("has IPv4 address : %s",inet_ntoa(a.sin_addr));
+            printf("\n%s\n\n", inet_ntoa(a.sin_addr));
         }
-         
-        if(ntohs(answers[i].resource->type)==5) 
-        {
-            //Canonical name for an alias
-            printf("has alias name : %s",answers[i].rdata);
-        }
- 
-        printf("\n");
     }
 
  
@@ -382,12 +362,17 @@ void queryServerQuestion(unsigned char *host)
 
 int main( int argc , char *argv[])
 {
-    unsigned char hostname[100];
- 
+    unsigned char hostname[1024];
+    bzero(hostname, 1024);
+    
+    //printf("Argument: %s\n", argv[1]);
+    //printf("Argument size: %lu\n", strlen(argv[1]));
+    memcpy(hostname, argv[1], strlen(argv[1]));
+    //printf("Argument copy: %s\n", hostname);
      
     //Get the hostname from the terminal
-    printf("Enter Hostname to Lookup : ");
-    scanf("%s" , hostname);
+    //printf("Enter Hostname to Lookup : ");
+    //scanf("%s" , hostname);
      
     //Now get the ip of this hostname , A record
     queryServerQuestion(hostname);
