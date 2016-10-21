@@ -8,6 +8,7 @@
 
 #define MAXLINE 1024
 
+int debug = 0;
 
 // Struct for DNS header. flags are in reverse order per byte for endian conversion. 
 struct DNS_HEADER
@@ -58,7 +59,6 @@ struct R_DATA
 };
 #pragma pack(pop)
  
-// Borowed from http://www.binarytides.com/dns-query-code-in-c-with-winsock/
 void ChangetoDnsNameFormat(unsigned char* dns,unsigned char* host) 
 {
     int lock = 0 , i;
@@ -73,10 +73,16 @@ void ChangetoDnsNameFormat(unsigned char* dns,unsigned char* host)
             {
                 *dns++=host[lock];
             }
-            lock++; //or lock=i+1;
+            lock++;
         }
     }
     *dns++='\0';
+}
+
+void parseArg(char *arg){
+    if (arg[1] == 'd'){
+        debug = 1;
+    }
 }
 
 u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
@@ -90,14 +96,14 @@ u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
  
     name[0]='\0';
  
-    //read the names in 3www6google3com format
+
     while(*reader!=0)
     {
         if(*reader>=192)
         {
-            offset = (*reader)*256 + *(reader+1) - 49152; //49152 = 11000000 00000000 ;)
+            offset = (*reader)*256 + *(reader+1) - 49152; 
             reader = buffer + offset - 1;
-            jumped = 1; //we have jumped to another location so counting wont go up!
+            jumped = 1; 
         }
         else
         {
@@ -108,17 +114,16 @@ u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
  
         if(jumped==0)
         {
-            *count = *count + 1; //if we havent jumped to another location then we can count up
+            *count = *count + 1;
         }
     }
  
-    name[p]='\0'; //string complete
+    name[p]='\0'; 
     if(jumped==1)
     {
-        *count = *count + 1; //number of steps we actually moved forward in the packet
+        *count = *count + 1; 
     }
  
-    //now convert 3www6google3com0 to www.google.com
     for(i=0;i<(int)strlen((const char*)name);i++) 
     {
         p=name[i];
@@ -129,7 +134,7 @@ u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
         }
         name[i]='.';
     }
-    name[i-1]='\0'; //remove the last dot
+    name[i-1]='\0'; 
     return name;
 }
 
@@ -166,9 +171,10 @@ void queryServer(){
 
 void queryServerQuestion(unsigned char *host, char *nameserver)
 {
-    unsigned char buf[65536],*qname,*reader;
-    int i , j , stop , s, n;
     int bufsize = 65536;
+    unsigned char buf[bufsize],*qname,*reader,authbuf[bufsize];
+    int i , j , stop , s, n;
+    int noans = 0;
  
     struct sockaddr_in a;
  
@@ -247,10 +253,7 @@ void queryServerQuestion(unsigned char *host, char *nameserver)
     
     reader = &buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION)];
     
-    if(ntohs(header->ans_count) < 1){
-        printf("No available answer from this server.\n\n");
-        return;
-    }
+    
  
     //Start reading answers
     stop=0;
@@ -282,29 +285,58 @@ void queryServerQuestion(unsigned char *host, char *nameserver)
             reader = reader + stop;
         }
     }
- 
-
- 
-    //print answers
-    for(i=0 ; i < ntohs(header->ans_count) ; i++)
+    
+    //read authorities
+    for(i=0;i<ntohs(header->auth_count);i++)
     {
-        
+        auth[i].name=ReadName(reader,buf,&stop);
+        reader+=stop;
  
-        if( ntohs(answers[i].resource->type) == 1) //IPv4 address
+        auth[i].resource=(struct R_DATA*)(reader);
+        reader+=sizeof(struct R_DATA);
+ 
+        auth[i].rdata=ReadName(reader,buf,&stop);
+        reader+=stop;
+    }
+ 
+ 
+    
+    if(ntohs(header->ans_count) > 0){
+
+        //print answers
+        for(i=0 ; i < ntohs(header->ans_count) ; i++)
         {
-            long *p;
-            p=(long*)answers[i].rdata;
-            a.sin_addr.s_addr=(*p); //working without ntohl
-            if(header->aa){
-                printf("Authoritative answer: ");
-            }else{
-                printf("Non-authoritative answer: ");
+            
+     
+            if( ntohs(answers[i].resource->type) == 1)
+            {
+                long *p;
+                p=(long*)answers[i].rdata;
+                a.sin_addr.s_addr=(*p);
+                if(header->aa){
+                    printf("Authoritative answer: ");
+                }else{
+                    printf("Non-authoritative answer: ");
+                }
+                printf("%s\n\n", inet_ntoa(a.sin_addr));
             }
-            printf("%s\n\n", inet_ntoa(a.sin_addr));
         }
+        return;
+        
+    }else if(ntohs(header->auth_count) > 0 && !noans){
+        printf("Need recursion.\n\n");
+        printf("Auth: %s\n\n", auth[0].rdata);
+        //queryServerQuestion(unsigned char *host, char *nameserver)
+        
+        
+    }else{
+        printf("No available answer from this server.\n\n");
+        return;
     }
 
- 
+
+//root - 198.41.0.4
+//mines - 138.67.1.2
 
     return;
 }
@@ -329,6 +361,16 @@ int main( int argc , char *argv[])
 {
     unsigned char hostname[1024];
     bzero(hostname, 1024);
+    
+    if(argc < 3){
+        printf("ERROR: Must give two arguments for address and nameserver.\n");
+        return 1;
+    }
+    
+    if(argc > 3){
+        parseArg(argv[3]);
+    }
+    
     
     //printf("Argument: %s\n", argv[1]);
     //printf("Argument size: %lu\n", strlen(argv[1]));

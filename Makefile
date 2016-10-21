@@ -17,7 +17,7 @@ LRESOLVEFLAG = -lresolv
 #
 OBJ_FILES = project2.o
 
-project2: ${OBJ_FILES}
+dug: ${OBJ_FILES}
 	${LD} ${LDFLAGS} ${OBJ_FILES} ${LRESOLVEFLAG} -o $@ ${LIBRARYS}
 
 #
