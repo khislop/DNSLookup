@@ -5,14 +5,7 @@
 #define NSERVER 9316
 
 
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<netinet/in.h>
-#include<string.h>
-#include<arpa/inet.h>
-#include<string.h>
-#include<arpa/inet.h>
-#include<stdio.h>
+
 #define MAXLINE 1024
 
 
@@ -65,7 +58,7 @@ struct R_DATA
 };
 #pragma pack(pop)
  
-// This function was borowed from http://www.binarytides.com/dns-query-code-in-c-with-winsock/
+// Borowed from http://www.binarytides.com/dns-query-code-in-c-with-winsock/
 void ChangetoDnsNameFormat(unsigned char* dns,unsigned char* host) 
 {
     int lock = 0 , i;
@@ -171,7 +164,7 @@ void queryServer(){
 
 }
 
-void queryServerQuestion(unsigned char *host)
+void queryServerQuestion(unsigned char *host, char *nameserver)
 {
     unsigned char buf[65536],*qname,*reader;
     int i , j , stop , s, n;
@@ -184,28 +177,34 @@ void queryServerQuestion(unsigned char *host)
  
     struct DNS_HEADER *header = NULL;
     struct QUESTION *question = NULL;
+    
+    //printf("NS Adress: %s\n\n", nameserver);
+    //strcpy(nameserver, "138.67.1.2");
+    //printf("NS Adress: %s\n\n", nameserver);
  
     s=socket(AF_INET,SOCK_DGRAM,0);  //Initialize the socketfd
     bzero(&dest,sizeof(dest));  //Zero the server address
     dest.sin_family=AF_INET;  //Specify and internet address
     //dest.sin_addr.s_addr=inet_addr("127.0.0.1");  //localhost
     //dest.sin_port=htons(5035);  //Set the port
-    dest.sin_addr.s_addr=inet_addr("138.67.1.2");  //Mines
+    //dest.sin_addr.s_addr=inet_addr("138.67.1.2");  //Mines
+    dest.sin_addr.s_addr=inet_addr(nameserver);  //Set the address
     //dest.sin_addr.s_addr=inet_addr("198.41.0.4");  //root a
     dest.sin_port=htons(53);  //Set the port
     //connect(s,(struct sockaddr*)&dest,sizeof(dest));  //Connect to the server
+    
     
     
     //Set the DNS structure to standard queries
     header = (struct DNS_HEADER *)&buf;
  
     header->id = (unsigned short) htons(getpid());
-    header->qr = 0; //This is a query
-    header->opcode = 0; //This is a standard query
-    header->aa = 0; //Not Authoritative
-    header->tc = 0; //This message is not truncated
+    header->qr = 0; 
+    header->opcode = 0; 
+    header->aa = 0; 
+    header->tc = 0; 
     header->rd = 0; //Recursion Not Desired
-    header->ra = 0; //Recursion not available
+    header->ra = 0; 
     header->z = 0;
     header->ad = 0;
     header->cd = 0;
@@ -228,7 +227,8 @@ void queryServerQuestion(unsigned char *host)
     
     if( sendto(s,(char*)buf,sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION),0,(struct sockaddr*)&dest,sizeof(dest)) < 0)
     {
-        perror("sendto failed\n");
+        perror("Sending failed");
+        return;
     }
     
 
@@ -283,59 +283,24 @@ void queryServerQuestion(unsigned char *host)
         }
     }
  
-    //read authorities
-    for(i=0;i<ntohs(header->auth_count);i++)
-    {
-        auth[i].name=ReadName(reader,buf,&stop);
-        reader+=stop;
- 
-        auth[i].resource=(struct R_DATA*)(reader);
-        reader+=sizeof(struct R_DATA);
- 
-        auth[i].rdata=ReadName(reader,buf,&stop);
-        reader+=stop;
-    }
- 
-    //read additional
-    for(i=0;i<ntohs(header->add_count);i++)
-    {typedef struct
-{
-    unsigned char *name;
-    struct QUESTION *ques;
-} QUERY;
-        addit[i].name=ReadName(reader,buf,&stop);
-        reader+=stop;
- 
-        addit[i].resource=(struct R_DATA*)(reader);
-        reader+=sizeof(struct R_DATA);
- 
-        if(ntohs(addit[i].resource->type)==1)
-        {
-            addit[i].rdata = (unsigned char*)malloc(ntohs(addit[i].resource->data_len));
-            for(j=0;j<ntohs(addit[i].resource->data_len);j++)
-            addit[i].rdata[j]=reader[j];
- 
-            addit[i].rdata[ntohs(addit[i].resource->data_len)]='\0';
-            reader+=ntohs(addit[i].resource->data_len);
-        }
-        else
-        {
-            addit[i].rdata=ReadName(reader,buf,&stop);
-            reader+=stop;
-        }
-    }
+
  
     //print answers
     for(i=0 ; i < ntohs(header->ans_count) ; i++)
     {
-        //printf("Name : %s ",answers[i].name);
+        
  
         if( ntohs(answers[i].resource->type) == 1) //IPv4 address
         {
             long *p;
             p=(long*)answers[i].rdata;
             a.sin_addr.s_addr=(*p); //working without ntohl
-            printf("\n%s\n\n", inet_ntoa(a.sin_addr));
+            if(header->aa){
+                printf("Authoritative answer: ");
+            }else{
+                printf("Non-authoritative answer: ");
+            }
+            printf("%s\n\n", inet_ntoa(a.sin_addr));
         }
     }
 
@@ -375,7 +340,7 @@ int main( int argc , char *argv[])
     //scanf("%s" , hostname);
      
     //Now get the ip of this hostname , A record
-    queryServerQuestion(hostname);
+    queryServerQuestion(hostname, argv[2]);
  
     return 0;
 }

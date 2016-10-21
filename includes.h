@@ -21,18 +21,18 @@
 #include <netdb.h> 
 #include <resolv.h>
 
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<string.h>
+#include<arpa/inet.h>
+#include<string.h>
+#include<arpa/inet.h>
+#include<stdio.h>
+
 using namespace std;
 
-// ************************************************************************
-// * Assigning a tag to each token just makes the code easier to read.
-// ************************************************************************
-#define HELO 1
-#define MAIL 2
-#define RCPT 3
-#define DATA 4
-#define RSET 5
-#define NOOP 6
-#define QUIT 7
+
 
 // ************************************************************************
 // * Local functions we are going to use.
