@@ -2,63 +2,13 @@
 // Kelton Hislop
 
 #include "includes.h"
-#define NSERVER 9316
-
-
-
 #define MAXLINE 1024
 
 int debug = 0;
 
-// Struct for DNS header. flags are in reverse order per byte for endian conversion. 
-struct DNS_HEADER
-{
-    unsigned short id; // identification number
- 
-    unsigned char rd :1; // recursion desired
-    unsigned char tc :1; // truncated message
-    unsigned char aa :1; // authoritive answer
-    unsigned char opcode :4; // purpose of message
-    unsigned char qr :1; // query/response flag
- 
-    unsigned char rcode :4; // response code
-    unsigned char cd :1; // checking disabled
-    unsigned char ad :1; // authenticated data
-    unsigned char z :1; // its z! reserved
-    unsigned char ra :1; // recursion available
- 
-    unsigned short q_count; // number of question entries
-    unsigned short ans_count; // number of answer entries
-    unsigned short auth_count; // number of authority entries
-    unsigned short add_count; // number of resource entries
-};
 
-//Constant sized fields of query structure
-struct QUESTION
-{
-    unsigned short qtype;
-    unsigned short qclass;
-};
 
-//Pointers to resource record contents
-struct RES_RECORD
-{
-    unsigned char *name;
-    struct R_DATA *resource;
-    unsigned char *rdata;
-};
 
-//Constant sized fields of the resource record structure
-#pragma pack(push, 1)
-struct R_DATA
-{
-    unsigned short type;
-    unsigned short _class;
-    unsigned int ttl;
-    unsigned short data_len;
-};
-#pragma pack(pop)
- 
 void ChangetoDnsNameFormat(unsigned char* dns,unsigned char* host) 
 {
     int lock = 0 , i;
@@ -85,8 +35,38 @@ void parseArg(char *arg){
     }
 }
 
-u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
-{
+void queryServer(){
+    int test;
+
+    int sockfd;	// Socketfd
+    int n;	
+    socklen_t len;
+    char sendline[1024],recvline[1024]; // Buffers for sending and receiving
+    struct sockaddr_in servaddr;  //Server addresshort
+    strcpy(sendline,"");  //Put an empty tring into sendline
+    printf("\n Enter the message : ");  //prompt user for mesage
+    scanf("%s",sendline);  //Receive user input
+    sockfd=socket(AF_INET,SOCK_DGRAM,0);  //Initialize the socketfd
+    bzero(&servaddr,sizeof(servaddr));  //Zero the server address
+    servaddr.sin_family=AF_INET;  //Specify and internet address
+    //servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");  //Set the address
+    //servaddr.sin_port=htons(5035);  //Set the port
+    servaddr.sin_addr.s_addr=inet_addr("138.67.1.2");  //Set the address
+    servaddr.sin_port=htons(53);  //Set the port
+    connect(sockfd,(struct sockaddr*)&servaddr,sizeof(servaddr));  //Connect to the server
+    len=sizeof(servaddr);  //get size of server address
+    test = sendto(sockfd,sendline,MAXLINE,0,(struct sockaddr*)&servaddr,len);  //Send sendline through socket
+    printf("Send Result: %i\n", test);
+    n=recvfrom(sockfd,recvline,MAXLINE,0,NULL,NULL);  //receive a response
+    recvline[n]=0;  //set the end of the received data
+    printf("Return Result: %i\n", n);
+    printf("\n Server's Echo : %s\n\n",recvline);  //print received data
+    
+    
+
+}
+
+u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count){
     unsigned char *name;
     unsigned int p=0,jumped=0,offset;
     int i , j;
@@ -138,36 +118,7 @@ u_char* ReadName(unsigned char* reader,unsigned char* buffer,int* count)
     return name;
 }
 
-void queryServer(){
-    int test;
 
-    int sockfd;	// Socketfd
-    int n;	
-    socklen_t len;
-    char sendline[1024],recvline[1024]; // Buffers for sending and receiving
-    struct sockaddr_in servaddr;  //Server addresshort
-    strcpy(sendline,"");  //Put an empty tring into sendline
-    printf("\n Enter the message : ");  //prompt user for mesage
-    scanf("%s",sendline);  //Receive user input
-    sockfd=socket(AF_INET,SOCK_DGRAM,0);  //Initialize the socketfd
-    bzero(&servaddr,sizeof(servaddr));  //Zero the server address
-    servaddr.sin_family=AF_INET;  //Specify and internet address
-    //servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");  //Set the address
-    //servaddr.sin_port=htons(5035);  //Set the port
-    servaddr.sin_addr.s_addr=inet_addr("138.67.1.2");  //Set the address
-    servaddr.sin_port=htons(53);  //Set the port
-    connect(sockfd,(struct sockaddr*)&servaddr,sizeof(servaddr));  //Connect to the server
-    len=sizeof(servaddr);  //get size of server address
-    test = sendto(sockfd,sendline,MAXLINE,0,(struct sockaddr*)&servaddr,len);  //Send sendline through socket
-    printf("Send Result: %i\n", test);
-    n=recvfrom(sockfd,recvline,MAXLINE,0,NULL,NULL);  //receive a response
-    recvline[n]=0;  //set the end of the received data
-    printf("Return Result: %i\n", n);
-    printf("\n Server's Echo : %s\n\n",recvline);  //print received data
-    
-    
-
-}
 
 u_char* queryServerQuestion(unsigned char *host, char *nameserver)
 {
@@ -197,7 +148,6 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
     dest.sin_addr.s_addr=inet_addr(nameserver);  //Set the address
     //dest.sin_addr.s_addr=inet_addr("198.41.0.4");  //root a
     dest.sin_port=htons(53);  //Set the port
-    //connect(s,(struct sockaddr*)&dest,sizeof(dest));  //Connect to the server
     
     
     
@@ -209,7 +159,7 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
     header->opcode = 0; 
     header->aa = 0; 
     header->tc = 0; 
-    header->rd = 0; //Recursion Not Desired
+    header->rd = 0; 
     header->ra = 0; 
     header->z = 0;
     header->ad = 0;
@@ -226,7 +176,7 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
     qname = &buf[12];
  
     ChangetoDnsNameFormat(qname , host);
-    question = (struct QUESTION*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)]; //fill it
+    question = (struct QUESTION*)&buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname) + 1)];
     
     question->qtype = htons(1); 
     question->qclass = htons(1); 
@@ -239,7 +189,7 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
     
 
     n=recvfrom(s,buf,bufsize,0,NULL,NULL);  //receive a response
-    buf[n] = 0;  //set the end of the received data
+    buf[n] = 0;  
     //printf("Return Result: %i\n", n);
     if(n < 1){
         printf("No response from this server.");
@@ -253,9 +203,8 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
     
     reader = &buf[sizeof(struct DNS_HEADER) + (strlen((const char*)qname)+1) + sizeof(struct QUESTION)];
     
-    
  
-    //Start reading answers
+    //Read answers
     stop=0;
  
     for(i=0;i<ntohs(header->ans_count);i++)
@@ -266,7 +215,7 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
         answers[i].resource = (struct R_DATA*)(reader);
         reader = reader + sizeof(struct R_DATA);
  
-        if(ntohs(answers[i].resource->type) == 1) //if its an ipv4 address
+        if(ntohs(answers[i].resource->type) == 1)
         {
             answers[i].rdata = (unsigned char*)malloc(ntohs(answers[i].resource->data_len));
  
@@ -286,7 +235,7 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
         }
     }
     
-    //read authorities
+    //Read authorities
     for(i=0;i<ntohs(header->auth_count);i++)
     {
         auth[i].name=ReadName(reader,buf,&stop);
@@ -317,13 +266,16 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
             addit[i].rdata[ntohs(addit[i].resource->data_len)]='\0';
             reader+=ntohs(addit[i].resource->data_len);
  
+        }else
+        {
+            addit[i].rdata=ReadName(reader,buf,&stop);
+            reader+=stop;
         }
     }
  
-    
+    // Print the output to console
     if(ntohs(header->ans_count) > 0){
 
-        //print answers
         for(i=0 ; i < ntohs(header->ans_count) ; i++)
         {
             
@@ -344,15 +296,25 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
         return host;
         
     }else if(ntohs(header->add_count) > 0 && !noans){
-        printf("Need recursion.\n\n");
-        printf("Other is: %s\n\n", addit[0].rdata);
-        //queryServerQuestion(unsigned char *host, char *nameserver)
+        //printf("\nNeed recursion.\n\n");
+        
+        long *p;
+        p=(long*)addit[0].rdata;
+        a.sin_addr.s_addr=(*p);
+        
+        if(debug){
+            printf("No answer, checking with %s\n\n", inet_ntoa(a.sin_addr));
+        }
+        
+        queryServerQuestion(host, inet_ntoa(a.sin_addr));
         
         
     }else{
         printf("No available answer from this server.\n\n");
         return host;
     }
+
+ 
 
 
 //root - 198.41.0.4
@@ -364,24 +326,13 @@ u_char* queryServerQuestion(unsigned char *host, char *nameserver)
 // ***************************************************************************
 // * Main
 // ***************************************************************************
-/*int main(int argc, char **argv) {
-
-    unsigned char address[50];
-    //address = (char*)malloc(sizeof("test"));
-    //address = (unsigned char)malloc(50);
-    strcpy(address, "www.mines.edu");
-
-    queryServerQuestion(address);
-
-    return 0;
-    
-}*/
 
 int main( int argc , char *argv[])
 {
     unsigned char hostname[1024];
     bzero(hostname, 1024);
     
+    //Check for enough arguments
     if(argc < 3){
         printf("ERROR: Must give two arguments for address and nameserver.\n");
         return 1;
@@ -396,12 +347,7 @@ int main( int argc , char *argv[])
     //printf("Argument size: %lu\n", strlen(argv[1]));
     memcpy(hostname, argv[1], strlen(argv[1]));
     //printf("Argument copy: %s\n", hostname);
-     
-    //Get the hostname from the terminal
-    //printf("Enter Hostname to Lookup : ");
-    //scanf("%s" , hostname);
-     
-    //Now get the ip of this hostname , A record
+
     queryServerQuestion(hostname, argv[2]);
  
     return 0;
